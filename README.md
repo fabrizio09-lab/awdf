@@ -64,6 +64,7 @@ bolt.diy was originally started by [Cole Medin](https://www.youtube.com/@ColeMed
 - ✅ Detect terminal Errors and ask bolt to fix it (@thecodacus)
 - ✅ Detect preview Errors and ask bolt to fix it (@wonderwhy-er)
 - ✅ Add Starter Template Options (@thecodacus)
+- ✅ Bolt Extension Library (@dustinwloring1988)
 - ⬜ **HIGH PRIORITY** - Prevent bolt from rewriting files as often (file locking and diffs)
 - ⬜ **HIGH PRIORITY** - Better prompting for smaller LLMs (code window sometimes doesn't start)
 - ⬜ **HIGH PRIORITY** - Run agents in the backend as opposed to a single model call
