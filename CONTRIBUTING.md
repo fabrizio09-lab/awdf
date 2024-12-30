@@ -18,7 +18,7 @@ This project and everyone participating in it is governed by our Code of Conduct
 ## How Can I Contribute?
 
 ### 🐞 Reporting Bugs and Feature Requests
-- Check the issue tracker to avoid duplicates
+- Check the [issue tracker](https://github.com/stackblitz-labs/bolt.diy/issues) to avoid duplicates.
 - Use the issue templates when available
 - Include as much relevant information as possible
 - For bugs, add steps to reproduce the issue
