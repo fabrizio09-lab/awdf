@@ -41,6 +41,8 @@ export function GitUrlImport() {
   const { ready: gitReady, gitClone } = useGit();
   const [imported, setImported] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [progress, setProgress] = useState(0);
+  const [progressText, setProgressText] = useState('');
 
   const importRepo = async (repoUrl?: string) => {
     if (!gitReady && !historyReady) {
@@ -48,34 +50,67 @@ export function GitUrlImport() {
     }
 
     if (repoUrl) {
+      setProgress(0);
+      setProgressText('Initializing clone...');
+
       const ig = ignore().add(IGNORE_PATTERNS);
-      const { workdir, data } = await gitClone(repoUrl);
 
-      if (importChat) {
-        const filePaths = Object.keys(data).filter((filePath) => !ig.ignores(filePath));
+      try {
+        const { workdir, data } = await gitClone(repoUrl, {
+          onProgress: (event) => {
+            let percent;
+            let fsPercent;
 
-        const textDecoder = new TextDecoder('utf-8');
+            switch (event.phase) {
+              case 'counting':
+                setProgress(5);
+                setProgressText(`Counting objects: ${event.loaded}...`);
+                break;
+              case 'receiving':
+                percent = event.total ? (event.loaded / event.total) * 50 + 10 : 10;
+                setProgress(percent);
+                setProgressText(`Receiving objects: ${event.loaded}${event.total ? `/${event.total}` : ''}...`);
+                break;
+              case 'resolving':
+                setProgress(65);
+                setProgressText('Resolving deltas...');
+                break;
+              case 'fs_operations':
+                fsPercent = event.total ? (event.loaded / event.total) * 25 + 70 : 70;
+                setProgress(fsPercent);
+                setProgressText(`Processing files: ${event.loaded}/${event.total}`);
+                break;
+            }
+          },
+        });
 
-        // Convert files to common format for command detection
-        const fileContents = filePaths
-          .map((filePath) => {
-            const { data: content, encoding } = data[filePath];
-            return {
-              path: filePath,
-              content: encoding === 'utf8' ? content : content instanceof Uint8Array ? textDecoder.decode(content) : '',
-            };
-          })
-          .filter((f) => f.content);
+        if (importChat) {
+          setProgress(95);
+          setProgressText('Processing repository...');
 
-        // Detect and create commands message
-        const commands = await detectProjectCommands(fileContents);
-        const commandsMessage = createCommandsMessage(commands);
+          const filePaths = Object.keys(data).filter((filePath) => !ig.ignores(filePath));
+          const textDecoder = new TextDecoder('utf-8');
 
-        // Create files message
-        const filesMessage: Message = {
-          role: 'assistant',
-          content: `Cloning the repo ${repoUrl} into ${workdir}
-<boltArtifact id="imported-files" title="Git Cloned Files" type="bundled">           
+          const fileContents = filePaths
+            .map((filePath) => {
+              const { data: content, encoding } = data[filePath];
+              return {
+                path: filePath,
+                content:
+                  encoding === 'utf8' ? content : content instanceof Uint8Array ? textDecoder.decode(content) : '',
+              };
+            })
+            .filter((f) => f.content);
+
+          setProgressText('Analyzing project structure...');
+
+          const commands = await detectProjectCommands(fileContents);
+          const commandsMessage = createCommandsMessage(commands);
+
+          const filesMessage: Message = {
+            role: 'assistant',
+            content: `Cloning the repo ${repoUrl} into ${workdir}
+<boltArtifact id="imported-files" title="Git Cloned Files" type="bundled">
 ${fileContents
   .map(
     (file) =>
@@ -85,17 +120,29 @@ ${file.content}
   )
   .join('\n')}
 </boltArtifact>`,
-          id: generateId(),
-          createdAt: new Date(),
-        };
+            id: generateId(),
+            createdAt: new Date(),
+          };
 
-        const messages = [filesMessage];
+          const messages = [filesMessage];
 
-        if (commandsMessage) {
-          messages.push(commandsMessage);
+          if (commandsMessage) {
+            messages.push(commandsMessage);
+          }
+
+          setProgress(98);
+          setProgressText('Finalizing import...');
+          await importChat(`Git Project:${repoUrl.split('/').slice(-1)[0]}`, messages);
+          setProgress(100);
+          setProgressText('Import complete!');
         }
+      } catch (error) {
+        console.error('Error during import:', error);
+        toast.error('Failed to import repository');
+        setLoading(false);
+        window.location.href = '/';
 
-        await importChat(`Git Project:${repoUrl.split('/').slice(-1)[0]}`, messages);
+        return;
       }
     }
   };
@@ -126,7 +173,13 @@ ${file.content}
       {() => (
         <>
           <Chat />
-          {loading && <LoadingOverlay message="Please wait while we clone the repository..." />}
+          {loading && (
+            <LoadingOverlay
+              message="Please wait while we clone the repository..."
+              progress={progress}
+              progressText={progressText}
+            />
+          )}
         </>
       )}
     </ClientOnly>

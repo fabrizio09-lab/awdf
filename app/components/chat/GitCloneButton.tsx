@@ -3,6 +3,9 @@ import { useGit } from '~/lib/hooks/useGit';
 import type { Message } from 'ai';
 import { detectProjectCommands, createCommandsMessage } from '~/utils/projectCommands';
 import { generateId } from '~/utils/fileUtils';
+import { useState } from 'react';
+import { toast } from 'react-toastify';
+import { LoadingOverlay } from '~/components/ui/LoadingOverlay';
 
 const IGNORE_PATTERNS = [
   'node_modules/**',
@@ -37,6 +40,10 @@ interface GitCloneButtonProps {
 
 export default function GitCloneButton({ importChat }: GitCloneButtonProps) {
   const { ready, gitClone } = useGit();
+  const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [progressText, setProgressText] = useState('');
+
   const onClick = async (_e: any) => {
     if (!ready) {
       return;
@@ -45,33 +52,65 @@ export default function GitCloneButton({ importChat }: GitCloneButtonProps) {
     const repoUrl = prompt('Enter the Git url');
 
     if (repoUrl) {
-      const { workdir, data } = await gitClone(repoUrl);
+      setLoading(true);
 
-      if (importChat) {
-        const filePaths = Object.keys(data).filter((filePath) => !ig.ignores(filePath));
-        console.log(filePaths);
+      try {
+        const { workdir, data } = await gitClone(repoUrl, {
+          onProgress: (event) => {
+            let percent;
+            let fsPercent;
 
-        const textDecoder = new TextDecoder('utf-8');
+            switch (event.phase) {
+              case 'counting':
+                setProgress(5);
+                setProgressText(`Counting objects: ${event.loaded}...`);
+                break;
+              case 'receiving':
+                percent = event.total ? (event.loaded / event.total) * 50 + 10 : 10;
+                setProgress(percent);
+                setProgressText(`Receiving objects: ${event.loaded}${event.total ? `/${event.total}` : ''}...`);
+                break;
+              case 'resolving':
+                setProgress(65);
+                setProgressText('Resolving deltas...');
+                break;
+              case 'fs_operations':
+                fsPercent = event.total ? (event.loaded / event.total) * 25 + 70 : 70;
+                setProgress(fsPercent);
+                setProgressText(`Processing files: ${event.loaded}/${event.total}`);
+                break;
+            }
+          },
+        });
 
-        // Convert files to common format for command detection
-        const fileContents = filePaths
-          .map((filePath) => {
-            const { data: content, encoding } = data[filePath];
-            return {
-              path: filePath,
-              content: encoding === 'utf8' ? content : content instanceof Uint8Array ? textDecoder.decode(content) : '',
-            };
-          })
-          .filter((f) => f.content);
+        if (importChat) {
+          setProgress(95);
+          setProgressText('Processing repository...');
 
-        // Detect and create commands message
-        const commands = await detectProjectCommands(fileContents);
-        const commandsMessage = createCommandsMessage(commands);
+          const filePaths = Object.keys(data).filter((filePath) => !ig.ignores(filePath));
+          console.log(filePaths);
 
-        // Create files message
-        const filesMessage: Message = {
-          role: 'assistant',
-          content: `Cloning the repo ${repoUrl} into ${workdir}
+          const textDecoder = new TextDecoder('utf-8');
+
+          const fileContents = filePaths
+            .map((filePath) => {
+              const { data: content, encoding } = data[filePath];
+              return {
+                path: filePath,
+                content:
+                  encoding === 'utf8' ? content : content instanceof Uint8Array ? textDecoder.decode(content) : '',
+              };
+            })
+            .filter((f) => f.content);
+
+          setProgressText('Analyzing project structure...');
+
+          const commands = await detectProjectCommands(fileContents);
+          const commandsMessage = createCommandsMessage(commands);
+
+          const filesMessage: Message = {
+            role: 'assistant',
+            content: `Cloning the repo ${repoUrl} into ${workdir}
 <boltArtifact id="imported-files" title="Git Cloned Files" type="bundled">
 ${fileContents
   .map(
@@ -82,29 +121,47 @@ ${file.content}
   )
   .join('\n')}
 </boltArtifact>`,
-          id: generateId(),
-          createdAt: new Date(),
-        };
+            id: generateId(),
+            createdAt: new Date(),
+          };
 
-        const messages = [filesMessage];
+          const messages = [filesMessage];
 
-        if (commandsMessage) {
-          messages.push(commandsMessage);
+          if (commandsMessage) {
+            messages.push(commandsMessage);
+          }
+
+          setProgress(98);
+          setProgressText('Finalizing import...');
+          await importChat(`Git Project:${repoUrl.split('/').slice(-1)[0]}`, messages);
+          setProgress(100);
+          setProgressText('Import complete!');
         }
-
-        await importChat(`Git Project:${repoUrl.split('/').slice(-1)[0]}`, messages);
+      } catch (error) {
+        console.error('Error during import:', error);
+        toast.error('Failed to import repository');
+      } finally {
+        setLoading(false);
       }
     }
   };
 
   return (
-    <button
-      onClick={onClick}
-      title="Clone a Git Repo"
-      className="px-4 py-2 rounded-lg border border-bolt-elements-borderColor bg-bolt-elements-prompt-background text-bolt-elements-textPrimary hover:bg-bolt-elements-background-depth-3 transition-all flex items-center gap-2"
-    >
-      <span className="i-ph:git-branch" />
-      Clone a Git Repo
-    </button>
+    <>
+      <button
+        onClick={onClick}
+        className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-bolt-elements-textSecondary rounded-lg hover:bg-bolt-elements-background-depth-1 transition-colors"
+      >
+        <div className="i-carbon-logo-github text-lg" />
+        Import from GitHub
+      </button>
+      {loading && (
+        <LoadingOverlay
+          message="Please wait while we clone the repository..."
+          progress={progress}
+          progressText={progressText}
+        />
+      )}
+    </>
   );
 }
