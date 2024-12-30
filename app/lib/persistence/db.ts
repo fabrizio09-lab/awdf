@@ -53,6 +53,7 @@ export async function setMessages(
   urlId?: string,
   description?: string,
   timestamp?: string,
+  gitMeta?: { url: string; branch: string; sourceHash: string },
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const transaction = db.transaction('chats', 'readwrite');
@@ -69,6 +70,7 @@ export async function setMessages(
       urlId,
       description,
       timestamp: timestamp ?? new Date().toISOString(),
+      gitMeta,
     });
 
     request.onsuccess = () => resolve();
@@ -204,6 +206,7 @@ export async function createChatFromMessages(
   db: IDBDatabase,
   description: string,
   messages: Message[],
+  gitMeta?: { url: string; branch: string; sourceHash: string },
 ): Promise<string> {
   const newId = await getNextId(db);
   const newUrlId = await getUrlId(db, newId); // Get a new urlId for the duplicated chat
@@ -214,6 +217,8 @@ export async function createChatFromMessages(
     messages,
     newUrlId, // Use the new urlId
     description,
+    new Date().toISOString(),
+    gitMeta,
   );
 
   return newUrlId; // Return the urlId instead of id for navigation

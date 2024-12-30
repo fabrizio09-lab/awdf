@@ -21,6 +21,7 @@ export interface ChatHistoryItem {
   description?: string;
   messages: Message[];
   timestamp: string;
+  gitMeta?: { url: string; branch: string; sourceHash: string };
 }
 
 const persistenceEnabled = !import.meta.env.VITE_DISABLE_PERSISTENCE;
@@ -125,13 +126,17 @@ export function useChatHistory() {
         console.log(error);
       }
     },
-    importChat: async (description: string, messages: Message[]) => {
+    importChat: async (
+      description: string,
+      messages: Message[],
+      gitMeta?: { url: string; branch: string; sourceHash: string },
+    ) => {
       if (!db) {
         return;
       }
 
       try {
-        const newId = await createChatFromMessages(db, description, messages);
+        const newId = await createChatFromMessages(db, description, messages, gitMeta);
         window.location.href = `/chat/${newId}`;
         toast.success('Chat imported successfully');
       } catch (error) {

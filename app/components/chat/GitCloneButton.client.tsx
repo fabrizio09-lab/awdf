@@ -32,7 +32,11 @@ const ig = ignore().add(IGNORE_PATTERNS);
 
 interface GitCloneButtonProps {
   className?: string;
-  importChat?: (description: string, messages: Message[]) => Promise<void>;
+  importChat?: (
+    description: string,
+    messages: Message[],
+    gitMeta?: { url: string; branch: string; sourceHash: string },
+  ) => Promise<void>;
 }
 
 export default function GitCloneButton({ importChat }: GitCloneButtonProps) {
@@ -92,7 +96,11 @@ ${file.content}
           messages.push(commandsMessage);
         }
 
-        await importChat(`Git Project:${repoUrl.split('/').slice(-1)[0]}`, messages);
+        await importChat(`Git Project:${repoUrl.split('/').slice(-1)[0]}`, messages, {
+          url: repoUrl,
+          branch: 'main',
+          sourceHash: '',
+        });
       }
     }
   };
